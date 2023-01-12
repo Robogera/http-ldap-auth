@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// opened session representation
+// user session datastruct
 type Session struct {
 	username       string
 	expirationTime time.Time
@@ -19,8 +19,8 @@ type Session struct {
 type SessionStorage struct {
 	hashmap               map[string]*Session
 	mux                   *sync.Mutex
-	defaultCookieName     string
-	defaultSessionTimeout time.Duration
+	defaultCookieName     string        // name of the client browser cookie
+	defaultSessionTimeout time.Duration // session ends after this much time of inactivity
 }
 
 func initSessionStorage(cookie_name string, timeout time.Duration) *SessionStorage {
@@ -59,6 +59,19 @@ func (ses *SessionStorage) delete(key string) {
 	defer ses.mux.Unlock()
 
 	delete(ses.hashmap, key)
+}
+
+// deletes opened sessions with expiration time before <time>
+func (ses *SessionStorage) cleanupOlder(time time.Time) {
+	ses.mux.Lock()
+	defer ses.mux.Unlock()
+
+	for key, value := range ses.hashmap {
+		if value.expirationTime.Before(time) {
+			delete(ses.hashmap, key)
+		}
+	}
+
 }
 
 func authMiddleware(next http.HandlerFunc, session_storage *SessionStorage) http.HandlerFunc {
