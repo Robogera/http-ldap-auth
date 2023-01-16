@@ -32,6 +32,7 @@ func initSessionStorage(cookie_name string, timeout time.Duration) *SessionStora
 	}
 }
 
+// concurrently get map entry, returns error on non-existent key
 func (ses *SessionStorage) get(key string) (*Session, error) {
 	var session *Session
 	var exists bool
@@ -47,6 +48,7 @@ func (ses *SessionStorage) get(key string) (*Session, error) {
 	return session, nil
 }
 
+// concurrently set map entry
 func (ses *SessionStorage) set(key string, value *Session) {
 	ses.mux.Lock()
 	defer ses.mux.Unlock()
@@ -54,6 +56,7 @@ func (ses *SessionStorage) set(key string, value *Session) {
 	ses.hashmap[key] = value
 }
 
+// concurrently delete map entry
 func (ses *SessionStorage) delete(key string) {
 	ses.mux.Lock()
 	defer ses.mux.Unlock()
@@ -62,16 +65,19 @@ func (ses *SessionStorage) delete(key string) {
 }
 
 // deletes opened sessions with expiration time before <time>
-func (ses *SessionStorage) cleanupOlder(time time.Time) {
+// returns slice of usernames from closed sessions
+func (ses *SessionStorage) cleanupOlder(time time.Time) []string {
+	var result []string = []string{}
 	ses.mux.Lock()
 	defer ses.mux.Unlock()
 
 	for key, value := range ses.hashmap {
 		if value.expirationTime.Before(time) {
+			result = append(result, value.username)
 			delete(ses.hashmap, key)
 		}
 	}
-
+	return result
 }
 
 func authMiddleware(next http.HandlerFunc, session_storage *SessionStorage) http.HandlerFunc {
@@ -143,7 +149,7 @@ func pageLogin(bot *LdapBot, session_storage *SessionStorage) http.HandlerFunc {
 			expirationTime: time.Now().Add(session_storage.defaultSessionTimeout),
 		})
 
-		http.Redirect(writer, request, "/", http.StatusSeeOther)
+		http.Redirect(writer, request, "/", http.StatusFound)
 	}
 }
 
@@ -170,18 +176,28 @@ func pageDownload() http.HandlerFunc {
 
 func main() {
 	var err error
-	var session_storage *SessionStorage = initSessionStorage("synapse_builder_session", time.Hour)
+	var config *Config
+
+	config, err = readBuilderConfigFile("config.toml")
+	if err != nil {
+		log.Panicf("Couldnt read the config.toml file. Error: %s", err)
+	}
+
+	var session_storage *SessionStorage = initSessionStorage(
+		config.Settings.Web.CookieName,
+		time.Minute*time.Duration(config.Settings.Web.SessionTimeout))
+
 	var bot *LdapBot = initLdapBot(
-		"", "",
-		"", "",
-		"")
+		config.Settings.Ldap.Server, config.Settings.Ldap.Dn,
+		config.Settings.Ldap.Password, config.Settings.Ldap.SearchBaseDn,
+		config.Settings.Ldap.SearchBaseFilter)
 
 	http.HandleFunc("/login", pageLogin(bot, session_storage))
 	http.HandleFunc("/", authMiddleware(pageMain(), session_storage))
 	http.HandleFunc("/download", authMiddleware(pageMain(), session_storage))
 	http.HandleFunc("/project/{id}", authMiddleware(pageProject(), session_storage))
 
-	err = http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", config.Settings.Web.Port), nil)
 	if err != nil {
 		log.Fatal("Http server fatal error: ", err)
 	}

@@ -29,12 +29,19 @@ type ConfigLdap struct {
 	SearchBaseFilter string `toml:"filter"`
 }
 
+type ConfigWeb struct {
+	Port           int    `toml:"port"`
+	CookieName     string `toml:"cookieName"`
+	SessionTimeout int    `toml:"timeoutMin"`
+}
+
 type Settings struct {
 	Engine  ConfigRepo  `toml:"engine"`
 	Objects ConfigRepo  `toml:"objects"`
 	Local   ConfigLocal `toml:"local"`
 	Proxy   ConfigProxy `toml:"proxy"`
 	Ldap    ConfigLdap  `toml:"ldap"`
+	Web     ConfigWeb   `toml:"web"`
 }
 
 type Config struct {
