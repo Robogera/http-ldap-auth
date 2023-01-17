@@ -1,0 +1,7 @@
+/var/log/synapse/*.log {
+	rotate 1000
+	weekly
+	delaycompress
+	compress
+	missingok
+	create 664 flex flex }

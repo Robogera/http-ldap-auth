@@ -1,0 +1,13 @@
+[Unit]
+Description=Start Synapse containers
+After=multi-user.target
+After=docker.service
+
+[Service]
+Type=idle
+User=flex
+Group=flex
+ExecStart=docker compose -f /srv/synapse/docker-compose.yml up -d
+
+[Install]
+WantedBy=multi-user.target

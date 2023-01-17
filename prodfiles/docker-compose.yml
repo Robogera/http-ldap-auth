@@ -1,0 +1,44 @@
+version: "3"
+x-logging:
+  &default-logging
+  driver: "json-file"
+  options:
+    max-file: 2
+    max-size: 10m
+
+services:
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:2.0.11
+    restart: always
+    logging:
+      driver: none
+    command: "mosquitto -c /mosquitto-no-auth.conf"
+
+  # rproxy:
+  #   container_name: rproxy
+  #   build: ./nginx-rproxy/
+  #   ports:
+  #     - 80:80
+  #   volumes:
+  #     - /var/log/rproxy:/var/log
+  #   depends_on:
+  #     - synapse
+
+  synapse:
+    container_name: synapse
+    build: .
+    restart: always
+    volumes:
+      - /var/cache/synapse:/app/var/cache
+      - /var/log/synapse:/app/var/log
+      - /tmp/synapse:/app/var/current
+    ports:
+      - 8080:8080
+    environment:
+      PYTHONPYCACHEPREFIX: /app/var/cache
+      USE_DEVICES: "true"
+      MQTT_HOST: mosquitto
+    depends_on:
+      - mosquitto
+    logging: *default-logging
