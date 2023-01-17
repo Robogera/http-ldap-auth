@@ -1,0 +1,24 @@
+<html>
+	<head>
+		<title>
+		</title>
+	</head>
+  <body>
+    <table>
+      <tr>
+        <th>Object</th>
+        <th>Last commit date</th>
+      </tr>
+      {{ range .ObjectList }}
+      <tr>
+        <td><a href="{{ .Url }}">{{ .Name }}</td>
+        <td>coming soon</td>
+      </tr>
+      {{ end }}
+    </table>
+    Currently logged as {{ .Username }}.
+    <form action="/logout" method="post">
+      <button name="logout" value="logout">Logout<button>
+    </form>
+  </body>
+</html>
