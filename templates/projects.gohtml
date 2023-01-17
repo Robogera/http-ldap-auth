@@ -12,7 +12,7 @@
       {{ range .ObjectList }}
       <tr>
         <td><a href="{{ .Url }}">{{ .Name }}</td>
-        <td>coming soon</td>
+        <td>{{ .LastChange }}</td>
       </tr>
       {{ end }}
     </table>

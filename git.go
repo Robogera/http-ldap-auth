@@ -109,9 +109,9 @@ func (local_repo *localRepo) getPath() string {
 
 // returns a slice of valid synapse objects present in the local repo
 // TODO: maybe return date of last edit/basic info rom inside project config
-func (local_repo *localRepo) getSynapseObjects() ([]string, error) {
+func (local_repo *localRepo) getSynapseObjects() ([]os.FileInfo, error) {
 	var contents []os.DirEntry
-	var projects []string
+	var projects []os.FileInfo
 	var err error
 
 	contents, err = os.ReadDir(local_repo.path)
@@ -119,7 +119,11 @@ func (local_repo *localRepo) getSynapseObjects() ([]string, error) {
 	for _, element := range contents {
 		if element.IsDir() {
 			if _, err = os.Stat(filepath.Join(local_repo.path, element.Name(), "config.xml")); err == nil {
-				projects = append(projects, element.Name())
+				var info os.FileInfo
+				info, err = element.Info()
+				if err != nil {
+					projects = append(projects, info)
+				}
 			}
 		}
 	}

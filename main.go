@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -99,7 +100,7 @@ func (page pageUrl) String() string {
 	case LOGIN:
 		return "/login"
 	case PROJECT:
-		return "/project/{}"
+		return "/project/{id}"
 	case DOWNLOADS:
 		return "/downloads"
 	case FILE:
@@ -146,10 +147,10 @@ func pageLogin(bot *LdapBot, session_storage *SessionStorage) http.HandlerFunc {
 
 		// on GET
 		if request.Method != http.MethodPost {
-			tmpl, err = template.ParseFiles("templates/login.html")
+			tmpl, err = template.ParseFiles("templates/login.gohtml")
 			if err != nil {
 				http.Error(writer, "not found", http.StatusNotFound)
-				log.Fatal("No template file found")
+				log.Panicln("No template file found")
 			}
 
 			tmpl.Execute(writer, nil)
@@ -183,10 +184,65 @@ func pageLogin(bot *LdapBot, session_storage *SessionStorage) http.HandlerFunc {
 	}
 }
 
-func pageMain() http.HandlerFunc {
+// the stuff that goes into pageMain template generation
+type Project struct {
+	Name       string
+	Url        string
+	LastChange string
+}
+
+type ProjectsList []*Project
+
+type MainPageTemplateData struct {
+	Projects ProjectsList
+	Username string
+}
+
+func pageMain(synapse_objects *localRepo) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
-		// STUB
-		http.Error(writer, "You have found an EASTER EGG", http.StatusNotFound)
+		if request.Method != http.MethodGet {
+			http.Error(writer, "responds to GET requests only", http.StatusBadRequest)
+		}
+
+		var tmpl *template.Template
+		var err error
+
+		tmpl, err = template.ParseFiles("templates/main.gohtml")
+		if err != nil {
+			http.Error(writer, "not found", http.StatusNotFound)
+			log.Panicln("No template file found")
+		}
+
+		// TODO: add a timer to localRepo and checkoutIfOlder() method
+		// to prevent frequent checkouts
+		err = synapse_objects.checkout(BRANCH, "main")
+		if err != nil {
+			http.Error(writer, "not found", http.StatusNotFound)
+			log.Printf("Can't checkout main at synapse_objects repo. Error: %s", err)
+		}
+
+		var file_info []os.FileInfo
+		file_info, err = synapse_objects.getSynapseObjects()
+		if err != nil {
+			log.Printf("Couldn't get a list of projects: %s", err)
+		}
+
+		var data *MainPageTemplateData
+		// TODO: maybe pass session_storage to this handler
+		// or read browser cookie (might be a bad idea)
+		data.Username = "placeholder"
+		data.Projects = make([]*Project, len(file_info))
+
+		for i, folder := range file_info {
+			data.Projects[i] = &Project{
+				Name:       folder.Name(),
+				LastChange: folder.ModTime().String(),
+				// TODO: this is terrible, find some way to not hardcode the url
+				Url: fmt.Sprint("/get/%s", folder.Name()),
+			}
+		}
+
+		tmpl.Execute(writer, data)
 	}
 }
 
@@ -238,6 +294,22 @@ func main() {
 		log.Panicf("Couldnt read the config.toml file. Error: %s", err)
 	}
 
+	var synapse_engine, synapse_objects *localRepo
+
+	synapse_engine, err = initizalizeLocalRepo(
+		config.Settings.Engine.Url, config.Settings.Engine.User,
+		config.Settings.Engine.Token, config.Settings.Local.Directory)
+	if err != nil {
+		log.Panicf("Error initializing synapse engine local repo: %s", err)
+	}
+
+	synapse_objects, err = initizalizeLocalRepo(
+		config.Settings.Objects.Url, config.Settings.Objects.User,
+		config.Settings.Objects.Token, config.Settings.Local.Directory)
+	if err != nil {
+		log.Panicf("Error initializing synapse objects local repo: %s", err)
+	}
+
 	var session_storage *SessionStorage = initSessionStorage(
 		config.Settings.Web.CookieName,
 		time.Minute*time.Duration(config.Settings.Web.SessionTimeout))
@@ -248,9 +320,9 @@ func main() {
 		config.Settings.Ldap.SearchBaseFilter)
 
 	http.HandleFunc(LOGIN.String(), pageLogin(bot, session_storage))
-	http.HandleFunc(MAIN.String(), authMiddleware(pageMain(), session_storage))
-	http.HandleFunc(DOWNLOADS.String(), authMiddleware(pageMain(), session_storage))
-	http.HandleFunc(PROJECT.String(), authMiddleware(pageProject(), session_storage))
+	http.HandleFunc(MAIN.String(), authMiddleware(pageMain(synapse_objects), session_storage))
+	// http.HandleFunc(DOWNLOADS.String(), authMiddleware(pageMain(), session_storage))
+	// http.HandleFunc(PROJECT.String(), authMiddleware(pageProject(), session_storage))
 
 	log.Printf("Starting web server on port %d", config.Settings.Web.Port)
 	err = http.ListenAndServe(fmt.Sprintf(":%d", config.Settings.Web.Port), nil)
